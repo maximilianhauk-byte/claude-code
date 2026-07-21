@@ -167,6 +167,10 @@
     box-shadow: 0 0 2px rgba(0,0,0,.6);
     pointer-events:none;
   }
+  .knob:focus-visible{
+    outline: 2px solid #ffd27a;
+    outline-offset: 3px;
+  }
   .knob-unit label{
     font-size: 10px; letter-spacing: 1px; font-weight:bold;
     color:#e9d9c3; text-align:center;
@@ -297,9 +301,9 @@
 
       <div class="mode-row">
         <div class="mode-switch" id="modeSwitch">
-          <button class="mode-btn active" type="button" data-mode="male">MALE</button>
-          <button class="mode-btn" type="button" data-mode="female">FEMALE</button>
-          <button class="mode-btn" type="button" data-mode="animal">ANIMAL</button>
+          <button class="mode-btn active" type="button" data-mode="male" aria-pressed="true">MALE</button>
+          <button class="mode-btn" type="button" data-mode="female" aria-pressed="false">FEMALE</button>
+          <button class="mode-btn" type="button" data-mode="animal" aria-pressed="false">ANIMAL</button>
         </div>
         <button class="trigger-btn" id="triggerBtn" type="button">
           <span class="trigger-led"></span>PRRRT!
@@ -354,12 +358,17 @@
     return audioCtx;
   }
 
-  function makeNoiseBuffer(ctx, duration){
-    const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
-    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for(let i=0;i<length;i++) data[i] = Math.random()*2-1;
-    return buffer;
+  // Ein einziger, wiederverwendbarer Rausch-Puffer statt pro Furz neu generiert
+  // (spart CPU-Zeit auf dem Hauptthread, v.a. im schnellen Auto-Modus).
+  let sharedNoiseBuffer = null;
+  function getNoiseBuffer(ctx){
+    if(!sharedNoiseBuffer || sharedNoiseBuffer.sampleRate !== ctx.sampleRate){
+      const length = ctx.sampleRate * 4; // 4s Vorrat, wird pro Aufruf mit Zufalls-Offset geslict
+      sharedNoiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
+      const data = sharedNoiseBuffer.getChannelData(0);
+      for(let i=0;i<length;i++) data[i] = Math.random()*2-1;
+    }
+    return sharedNoiseBuffer;
   }
 
   function makeDistortionCurve(amount){
@@ -452,13 +461,14 @@
     oscs.forEach(o=> vibGain.connect(o.detune));
 
     const tremoloGain = ctx.createGain();
-    tremoloGain.gain.value = 1;
     const tremLfo = ctx.createOscillator();
     tremLfo.type = "sine";
     tremLfo.frequency.value = wobbleRate*0.5 + 4;
     const tremDepthGain = ctx.createGain();
-    const tremDepth = 0.15 + wobble*0.55;
-    tremDepthGain.gain.value = tremDepth;
+    // tremDepth ist 0 bei Wobble=0 (echtes "Aus") und bleibt <=0.7,
+    // damit Mittelwert (1-tremDepth/2) +/- Amplitude (tremDepth/2) nie negativ wird.
+    const tremDepth = wobble*0.7;
+    tremDepthGain.gain.value = tremDepth/2;
     tremLfo.connect(tremDepthGain);
     tremDepthGain.connect(tremoloGain.gain);
     tremoloGain.gain.value = 1 - tremDepth/2;
@@ -468,7 +478,9 @@
 
     // -- Moisture: filtered noise layer for wet/squelchy texture --
     const noiseSrc = ctx.createBufferSource();
-    noiseSrc.buffer = makeNoiseBuffer(ctx, duration + tailPad);
+    const noiseBuffer = getNoiseBuffer(ctx);
+    noiseSrc.buffer = noiseBuffer;
+    const noiseStartOffset = Math.random() * Math.max(0, noiseBuffer.duration - (duration + tailPad));
     const noiseFilter = ctx.createBiquadFilter();
     noiseFilter.type = "bandpass";
     noiseFilter.frequency.value = 350 + moisture*1300;
@@ -488,8 +500,8 @@
     noiseFilter.connect(noiseGain);
     noiseGain.connect(masterGain);
 
-    noiseGain.gain.linearRampToValueAtTime(0.12 + moisture*0.5, now + 0.05 + swell*0.2);
-    noiseGain.gain.linearRampToValueAtTime(0.05 + moisture*0.15, now + duration*0.9);
+    noiseGain.gain.linearRampToValueAtTime(moisture*0.62, now + 0.05 + swell*0.2);
+    noiseGain.gain.linearRampToValueAtTime(moisture*0.2, now + duration*0.9);
     noiseGain.gain.linearRampToValueAtTime(0.0001, now + duration + tailPad*0.6);
 
     // -- Whistle: high sine partial for the comedic squeak --
@@ -522,11 +534,13 @@
     vibLfo.start(now); vibLfo.stop(stopAt);
     tremLfo.start(now); tremLfo.stop(stopAt);
     noiseLfo.start(now); noiseLfo.stop(stopAt);
-    noiseSrc.start(now); noiseSrc.stop(stopAt);
+    noiseSrc.start(now, noiseStartOffset); noiseSrc.stop(stopAt);
     if(whistleOsc){ whistleOsc.start(now); whistleOsc.stop(stopAt); }
 
     const cleanupNodes = [masterGain, lowpass, bodyGain, shaper, tremoloGain, vibGain,
-      tremDepthGain, noiseFilter, noiseGain, noiseLfoGain];
+      tremDepthGain, noiseFilter, noiseGain, noiseLfoGain,
+      ...oscs, vibLfo, tremLfo, noiseLfo, noiseSrc];
+    if(whistleOsc) cleanupNodes.push(whistleOsc);
     if(whistleGain) cleanupNodes.push(whistleGain);
     setTimeout(()=>{
       cleanupNodes.forEach(n=>{ try{ n.disconnect(); }catch(e){} });
@@ -559,6 +573,7 @@
     const indicator = el.querySelector(".knob-indicator");
     const angle = -135 + value*270;
     indicator.style.transform = "translateX(-50%) rotate(" + angle + "deg)";
+    el.setAttribute("aria-valuenow", String(Math.round(value*100)));
   }
 
   function setKnob(key, value, opts){
@@ -569,38 +584,61 @@
     if(!opts.silentPreset) activePresetIndex = -1;
     highlightActivePreset();
     if(!opts.noLcdUpdate) updateLcdIdle();
+    // Frequenz steuert die Auto-Rate live nach, statt erst beim naechsten Zyklus zu greifen
+    if(key === "frequenz" && state.auto) resyncAutoTimer();
   }
 
   function initKnobDrag(key){
     const el = document.getElementById("knob-" + key);
     let dragging = false;
+    let activePointerId = null;
     let startY = 0;
     let startVal = 0;
 
     function onMove(e){
-      if(!dragging) return;
-      const y = e.touches ? e.touches[0].clientY : e.clientY;
-      const delta = (startY - y) / 140;
+      if(!dragging || e.pointerId !== activePointerId) return;
+      const delta = (startY - e.clientY) / 140;
       setKnob(key, startVal + delta);
       e.preventDefault();
     }
-    function onUp(){
+    function endDrag(e){
+      if(e && e.pointerId !== undefined && e.pointerId !== activePointerId) return;
       dragging = false;
+      activePointerId = null;
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointerup", endDrag);
+      window.removeEventListener("pointercancel", endDrag);
     }
     el.addEventListener("pointerdown", (e)=>{
+      if(dragging) return; // laufenden Drag nicht durch ein zweites Pointerdown ueberschreiben
       dragging = true;
+      activePointerId = e.pointerId;
       startY = e.clientY;
       startVal = state[key];
       window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointerup", endDrag);
+      window.addEventListener("pointercancel", endDrag);
       e.preventDefault();
     });
     el.addEventListener("wheel", (e)=>{
+      if(e.ctrlKey) return; // Browser-/Pinch-Zoom (Strg+Scroll) nicht blockieren
       e.preventDefault();
       setKnob(key, state[key] + (e.deltaY < 0 ? 0.02 : -0.02));
     }, { passive:false });
+
+    el.tabIndex = 0;
+    el.setAttribute("role", "slider");
+    el.setAttribute("aria-valuemin", "0");
+    el.setAttribute("aria-valuemax", "100");
+    const labelEl = el.closest(".knob-unit").querySelector("label");
+    el.setAttribute("aria-label", labelEl ? labelEl.textContent : key);
+    el.addEventListener("keydown", (e)=>{
+      const step = e.shiftKey ? 0.1 : 0.02;
+      if(e.key === "ArrowUp" || e.key === "ArrowRight"){ setKnob(key, state[key] + step); e.preventDefault(); }
+      else if(e.key === "ArrowDown" || e.key === "ArrowLeft"){ setKnob(key, state[key] - step); e.preventDefault(); }
+      else if(e.key === "Home"){ setKnob(key, 0); e.preventDefault(); }
+      else if(e.key === "End"){ setKnob(key, 1); e.preventDefault(); }
+    });
   }
 
   KNOBS.forEach(k=>{
@@ -613,23 +651,27 @@
     if(!btn) return;
     state.mode = btn.dataset.mode;
     activePresetIndex = -1;
-    [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=> b.classList.toggle("active", b === btn));
+    [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=>{
+      const isActive = b === btn;
+      b.classList.toggle("active", isActive);
+      b.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
     highlightActivePreset();
     updateLcdIdle();
   });
 
-  function flashTrigger(){
+  function flashTrigger(durationMs){
     triggerBtn.classList.add("firing");
-    setTimeout(()=> triggerBtn.classList.remove("firing"), 350);
+    setTimeout(()=> triggerBtn.classList.remove("firing"), Math.min(durationMs || 350, 2500));
   }
 
   function fireFart(paramsOverride){
     const params = paramsOverride || state;
     const dur = playFart(params);
-    flashTrigger();
+    flashTrigger(dur*1000);
     const phrases = ["PRRRT...", "BRRRAAAP!", "*PLOPP*", "FFFRRRT~", "TOOOT!", "SQUEEEEZE"];
     lcdLine1.textContent = phrases[Math.floor(Math.random()*phrases.length)];
-    setTimeout(()=> updateLcdIdle(), Math.min(2200, dur*1000));
+    setTimeout(()=> updateLcdIdle(), Math.min(dur*1000, 4000));
   }
 
   triggerBtn.addEventListener("click", ()=> fireFart());
@@ -650,6 +692,10 @@
       scheduleNextAuto();
     }, wait*1000);
   }
+  function resyncAutoTimer(){
+    if(autoTimer){ clearTimeout(autoTimer); autoTimer = null; }
+    scheduleNextAuto();
+  }
   function setAuto(on){
     state.auto = on;
     autoSwitch.setAttribute("aria-pressed", on ? "true" : "false");
@@ -668,12 +714,16 @@
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "preset-btn";
+    btn.setAttribute("aria-pressed", "false");
     btn.innerHTML = '<span class="pled"></span><span>' + preset.name + "</span>";
     btn.addEventListener("click", ()=>{
       KNOBS.forEach(k=> setKnob(k, preset[k], { silentPreset:true, noLcdUpdate:true }));
       state.mode = preset.mode;
-      [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=>
-        b.classList.toggle("active", b.dataset.mode === preset.mode));
+      [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=>{
+        const isActive = b.dataset.mode === preset.mode;
+        b.classList.toggle("active", isActive);
+        b.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
       activePresetIndex = idx;
       highlightActivePreset();
       updateLcdIdle("PRESET: " + preset.name.toUpperCase());
@@ -683,8 +733,11 @@
   });
 
   function highlightActivePreset(){
-    [...presetsGrid.children].forEach((btn, i)=>
-      btn.classList.toggle("active", i === activePresetIndex));
+    [...presetsGrid.children].forEach((btn, i)=>{
+      const isActive = i === activePresetIndex;
+      btn.classList.toggle("active", isActive);
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+    });
   }
 
   updateLcdIdle();
