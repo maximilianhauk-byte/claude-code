@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FURZTRONIC MK-1 — Vintage Furzgenerator</title>
+<style>
+  :root{
+    --case: #e9e2cf;
+    --case-dark: #cfc4a6;
+    --panel: #3a2c2a;
+    --panel-hi: #4a3a37;
+    --wood-a: #6b4226;
+    --wood-b: #4a2c17;
+    --lcd-bg: #93a582;
+    --lcd-fg: #1c2a14;
+    --accent: #c1442d;
+    --accent-dark: #8f2f1d;
+    --knob-body: #d67d2c;
+    --knob-dark: #a5551a;
+    --steel: #b9bcc0;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; min-height:100%;
+    background: radial-gradient(circle at 50% 0%, #3c3c3c, #161616 70%);
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color:#222;
+    display:flex; align-items:center; justify-content:center;
+    padding: 24px 12px;
+  }
+  .device{
+    display:flex;
+    background: var(--wood-b);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 0 0 0 2px rgba(0,0,0,.3);
+    max-width: 980px;
+    width: 100%;
+    overflow:hidden;
+  }
+  .wood-panel{
+    width: 28px;
+    flex: 0 0 28px;
+    background:
+      repeating-linear-gradient(180deg, rgba(0,0,0,.15) 0 2px, transparent 2px 6px),
+      linear-gradient(90deg, var(--wood-a), var(--wood-b));
+  }
+  .panel-main{
+    flex:1;
+    background:
+      linear-gradient(180deg, var(--case) 0%, var(--case-dark) 100%);
+    padding: 18px 22px 22px;
+    position:relative;
+  }
+  .panel-main::before{
+    content:"";
+    position:absolute; inset:6px;
+    border: 1px solid rgba(0,0,0,.15);
+    border-radius: 4px;
+    pointer-events:none;
+  }
+  .screw{
+    position:absolute; width:10px; height:10px; border-radius:50%;
+    background: radial-gradient(circle at 35% 35%, #eee, #888 60%, #555);
+    box-shadow: inset 0 0 2px rgba(0,0,0,.6);
+  }
+  .screw.tl{top:10px; left:10px;} .screw.tr{top:10px; right:10px;}
+  .screw.bl{bottom:10px; left:10px;} .screw.br{bottom:10px; right:10px;}
+
+  .top-row{
+    display:flex; align-items:stretch; gap:16px;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 2px 6px rgba(0,0,0,.4);
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .brand{
+    display:flex; flex-direction:column; justify-content:center; color:#e9d9c3;
+    min-width: 190px;
+  }
+  .brand-name{
+    font-family: Arial, sans-serif;
+    font-weight: 900;
+    font-size: 26px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    text-shadow: 0 1px 0 rgba(0,0,0,.5);
+  }
+  .brand-sub{
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    color: #cbb99a;
+    margin-top: 2px;
+  }
+  .lcd{
+    flex:1;
+    min-width: 220px;
+    background: var(--lcd-bg);
+    border-radius: 4px;
+    padding: 8px 12px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,.5), 0 0 0 3px #2a2320, 0 0 0 4px #6b5a44;
+    font-family: 'Courier New', monospace;
+    color: var(--lcd-fg);
+    display:flex; flex-direction:column; justify-content:center;
+    filter: contrast(1.05);
+  }
+  .lcd-line1{ font-size: 15px; font-weight:bold; letter-spacing:1px; min-height: 18px;}
+  .lcd-line2{ font-size: 11px; letter-spacing:1px; opacity:.85; min-height:14px;}
+
+  .power-section{ display:flex; align-items:center; }
+  .rocker{
+    display:flex; align-items:center; gap:8px;
+    background: linear-gradient(180deg,#555,#222);
+    color:#eee; border: 1px solid #000; border-radius: 6px;
+    padding: 10px 14px; font-weight:bold; letter-spacing:1px; font-size:12px;
+    cursor:pointer; box-shadow: 0 2px 0 #000, inset 0 1px 0 rgba(255,255,255,.15);
+  }
+  .rocker[aria-pressed="true"]{
+    background: linear-gradient(180deg,#7a2a1f,#4a1611);
+  }
+  .rocker-led{
+    width:9px; height:9px; border-radius:50%;
+    background:#3a0a0a; box-shadow: inset 0 0 2px #000;
+    display:inline-block;
+  }
+  .rocker[aria-pressed="true"] .rocker-led{
+    background: #ff5b3d;
+    box-shadow: 0 0 8px 2px #ff5b3d;
+    animation: blink 0.9s steps(1) infinite;
+  }
+  @keyframes blink{ 50%{ opacity:.25; } }
+
+  .knobs-row{
+    display:grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border-radius: 8px;
+    padding: 18px 10px 12px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 2px 6px rgba(0,0,0,.4);
+    margin-bottom: 18px;
+  }
+  .knob-unit{ display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .knob{
+    width: 58px; height: 58px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, var(--knob-body), var(--knob-dark) 70%);
+    box-shadow: 0 3px 0 #6b3a10, 0 6px 10px rgba(0,0,0,.5), inset 0 0 0 3px rgba(0,0,0,.25);
+    position: relative;
+    cursor: ns-resize;
+    touch-action: none;
+    user-select:none;
+  }
+  .knob::before{
+    content:"";
+    position:absolute; inset:6px; border-radius:50%;
+    background: radial-gradient(circle at 40% 35%, rgba(255,255,255,.35), transparent 60%);
+  }
+  .knob-indicator{
+    position:absolute; left:50%; top:6%;
+    width: 4px; height: 44%;
+    background: #fff2dd;
+    border-radius: 2px;
+    transform-origin: 50% 220%;
+    transform: translateX(-50%) rotate(-135deg);
+    box-shadow: 0 0 2px rgba(0,0,0,.6);
+    pointer-events:none;
+  }
+  .knob-unit label{
+    font-size: 10px; letter-spacing: 1px; font-weight:bold;
+    color:#e9d9c3; text-align:center;
+  }
+
+  .mode-row{
+    display:flex; align-items:center; justify-content:space-between; gap:16px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .mode-switch{
+    display:flex; background: #1e1a18; border-radius: 6px; padding: 4px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.6);
+  }
+  .mode-btn{
+    border:none; background:transparent; color:#c9b9a0; font-weight:bold;
+    letter-spacing: 1px; font-size: 11px; padding: 9px 14px; border-radius:4px;
+    cursor:pointer;
+  }
+  .mode-btn.active{
+    background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+    color: #fff2e6;
+    box-shadow: 0 0 6px rgba(193,68,45,.7);
+  }
+  .trigger-btn{
+    display:flex; align-items:center; gap:10px;
+    background: radial-gradient(circle at 35% 30%, #e2503a, #8f2416 75%);
+    color:#fff2e6; border: none; border-radius: 50px;
+    font-weight:900; letter-spacing:2px; font-size:15px;
+    padding: 16px 34px;
+    cursor:pointer;
+    box-shadow: 0 4px 0 #5c130a, 0 8px 14px rgba(0,0,0,.5), inset 0 2px 6px rgba(255,255,255,.25);
+  }
+  .trigger-btn:active{ transform: translateY(3px); box-shadow: 0 1px 0 #5c130a, 0 3px 6px rgba(0,0,0,.5); }
+  .trigger-led{ width:8px; height:8px; border-radius:50%; background:#4a0d05; }
+  .trigger-btn.firing .trigger-led{ background:#ffe25c; box-shadow: 0 0 8px 3px #ffe25c; }
+
+  .presets-row{
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border-radius: 8px;
+    padding: 12px 14px 14px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.05), 0 2px 6px rgba(0,0,0,.4);
+  }
+  .presets-label{
+    color:#e9d9c3; font-size:11px; letter-spacing:2px; font-weight:bold; margin-bottom:8px;
+  }
+  .presets-grid{
+    display:grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 8px;
+  }
+  .preset-btn{
+    background: linear-gradient(180deg,#4a4a4a,#2b2b2b);
+    color:#e9e2cf; border: 1px solid #111; border-radius: 5px;
+    font-size: 11px; font-weight:bold; letter-spacing:.4px;
+    padding: 10px 6px;
+    cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    box-shadow: 0 2px 0 #000;
+    text-align:center;
+    line-height:1.15;
+  }
+  .preset-btn .pled{
+    width:6px; height:6px; border-radius:50%; background:#3a1010;
+  }
+  .preset-btn.active{
+    background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  }
+  .preset-btn.active .pled{
+    background:#ffe25c; box-shadow:0 0 6px 2px #ffe25c;
+  }
+
+  @media (max-width: 720px){
+    .knobs-row{ grid-template-columns: repeat(3, 1fr); }
+    .presets-grid{ grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+  <div class="device">
+    <div class="wood-panel"></div>
+    <div class="panel-main">
+      <div class="screw tl"></div><div class="screw tr"></div>
+      <div class="screw bl"></div><div class="screw br"></div>
+
+      <div class="top-row">
+        <div class="brand">
+          <div class="brand-name">FURZTRONIC</div>
+          <div class="brand-sub">ANALOG FURZ SYNTHESIZER · MK-1</div>
+        </div>
+        <div class="lcd">
+          <div class="lcd-line1" id="lcdLine1">BEREIT</div>
+          <div class="lcd-line2" id="lcdLine2">MODE: MALE · MANUELL</div>
+        </div>
+        <div class="power-section">
+          <button class="rocker" id="autoSwitch" type="button" aria-pressed="false">
+            <span class="rocker-led"></span>AUTO
+          </button>
+        </div>
+      </div>
+
+      <div class="knobs-row" id="knobsRow">
+        <div class="knob-unit" data-key="frequenz">
+          <div class="knob" id="knob-frequenz"><div class="knob-indicator"></div></div>
+          <label>FREQUENZ</label>
+        </div>
+        <div class="knob-unit" data-key="tonhoehe">
+          <div class="knob" id="knob-tonhoehe"><div class="knob-indicator"></div></div>
+          <label>TONHÖHE</label>
+        </div>
+        <div class="knob-unit" data-key="feuchtigkeit">
+          <div class="knob" id="knob-feuchtigkeit"><div class="knob-indicator"></div></div>
+          <label>FEUCHTIGKEIT</label>
+        </div>
+        <div class="knob-unit" data-key="swell">
+          <div class="knob" id="knob-swell"><div class="knob-indicator"></div></div>
+          <label>SWELL</label>
+        </div>
+        <div class="knob-unit" data-key="whistle">
+          <div class="knob" id="knob-whistle"><div class="knob-indicator"></div></div>
+          <label>WHISTLE</label>
+        </div>
+        <div class="knob-unit" data-key="wobble">
+          <div class="knob" id="knob-wobble"><div class="knob-indicator"></div></div>
+          <label>WOBBLE</label>
+        </div>
+      </div>
+
+      <div class="mode-row">
+        <div class="mode-switch" id="modeSwitch">
+          <button class="mode-btn active" type="button" data-mode="male">MALE</button>
+          <button class="mode-btn" type="button" data-mode="female">FEMALE</button>
+          <button class="mode-btn" type="button" data-mode="animal">ANIMAL</button>
+        </div>
+        <button class="trigger-btn" id="triggerBtn" type="button">
+          <span class="trigger-led"></span>PRRRT!
+        </button>
+      </div>
+
+      <div class="presets-row">
+        <div class="presets-label">PRESETS</div>
+        <div class="presets-grid" id="presetsGrid"></div>
+      </div>
+    </div>
+    <div class="wood-panel"></div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  const KNOBS = ["frequenz","tonhoehe","feuchtigkeit","swell","whistle","wobble"];
+
+  const state = {
+    frequenz: 0.4,
+    tonhoehe: 0.45,
+    feuchtigkeit: 0.4,
+    swell: 0.3,
+    whistle: 0.2,
+    wobble: 0.35,
+    mode: "male",
+    auto: false
+  };
+
+  const PRESETS = [
+    { name:"Oktoberfest",      frequenz:0.30, tonhoehe:0.15, feuchtigkeit:0.75, swell:0.50, whistle:0.05, wobble:0.30, mode:"male"   },
+    { name:"French Kiss",      frequenz:0.20, tonhoehe:0.55, feuchtigkeit:0.20, swell:0.80, whistle:0.60, wobble:0.15, mode:"female" },
+    { name:"Disco-Time",       frequenz:0.80, tonhoehe:0.40, feuchtigkeit:0.40, swell:0.10, whistle:0.30, wobble:0.85, mode:"male"   },
+    { name:"Presslufthammer",  frequenz:0.90, tonhoehe:0.30, feuchtigkeit:0.35, swell:0.05, whistle:0.10, wobble:1.00, mode:"male"   },
+    { name:"Wal im Ozean",     frequenz:0.15, tonhoehe:0.05, feuchtigkeit:0.60, swell:1.00, whistle:0.15, wobble:0.20, mode:"animal" },
+    { name:"Alpenhorn-Solo",   frequenz:0.25, tonhoehe:0.20, feuchtigkeit:0.25, swell:0.90, whistle:0.40, wobble:0.10, mode:"male"   },
+    { name:"Gummiente Extrem", frequenz:0.60, tonhoehe:0.85, feuchtigkeit:0.15, swell:0.10, whistle:0.90, wobble:0.60, mode:"animal" },
+    { name:"Bürostuhl-Quietscher", frequenz:0.50, tonhoehe:0.70, feuchtigkeit:0.05, swell:0.05, whistle:0.50, wobble:0.40, mode:"female" },
+    { name:"Mitternachts-Snack-Attacke", frequenz:0.70, tonhoehe:0.40, feuchtigkeit:0.80, swell:0.20, whistle:0.20, wobble:0.70, mode:"animal" },
+    { name:"Trabbi-Anlasser",  frequenz:0.40, tonhoehe:0.25, feuchtigkeit:0.45, swell:0.15, whistle:0.05, wobble:0.90, mode:"male"   }
+  ];
+
+  // ---------- Audio Engine ----------
+  let audioCtx = null;
+  function ensureAudioCtx(){
+    if(!audioCtx){
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function makeNoiseBuffer(ctx, duration){
+    const length = Math.max(1, Math.floor(ctx.sampleRate * duration));
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for(let i=0;i<length;i++) data[i] = Math.random()*2-1;
+    return buffer;
+  }
+
+  function makeDistortionCurve(amount){
+    const n = 4096;
+    const curve = new Float32Array(n);
+    const k = amount;
+    for(let i=0;i<n;i++){
+      const x = (i*2)/n - 1;
+      curve[i] = ((3+k)*x*20*Math.PI/180) / (Math.PI + k*Math.abs(x));
+    }
+    return curve;
+  }
+
+  const clamp = (v,a,b)=> Math.min(b, Math.max(a,v));
+
+  function playFart(params){
+    const ctx = ensureAudioCtx();
+    const now = ctx.currentTime + 0.02;
+
+    const mode = params.mode;
+    const pitch = params.tonhoehe;
+    const moisture = params.feuchtigkeit;
+    const swell = params.swell;
+    const whistleAmt = params.whistle;
+    const wobble = params.wobble;
+
+    const baseDur = 0.7 + swell*1.3 + Math.random()*0.5;
+    const duration = mode === "animal" ? baseDur*1.25 : baseDur;
+    const tailPad = 0.35;
+
+    let fMin, fMax;
+    if(mode === "male"){ fMin = 42; fMax = 95; }
+    else if(mode === "female"){ fMin = 105; fMax = 240; }
+    else { fMin = 55; fMax = 320; }
+    const baseFreq = fMin + pitch*(fMax-fMin);
+
+    const masterGain = ctx.createGain();
+    masterGain.gain.setValueAtTime(0.0001, now);
+
+    // -- Body: unison saws through lowpass + waveshaper for "dicker" sound --
+    const lowpass = ctx.createBiquadFilter();
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = baseFreq*5 + 250;
+    lowpass.Q.value = 1.1;
+
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.value = 0.9;
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = makeDistortionCurve(18 + moisture*14);
+    shaper.oversample = "4x";
+
+    const detunes = mode === "animal" ? [-11,-2,0,9,16] : [-8,0,7];
+    const oscs = [];
+    detunes.forEach(det=>{
+      const o = ctx.createOscillator();
+      o.type = "sawtooth";
+      o.frequency.value = baseFreq;
+      o.detune.value = det;
+      o.connect(lowpass);
+      oscs.push(o);
+    });
+    lowpass.connect(bodyGain);
+    bodyGain.connect(shaper);
+
+    // pitch contour: quick rise (scaled by swell), then falling "blast" curve
+    oscs.forEach(o=>{
+      const f0 = o.frequency.value;
+      const riseTime = 0.04 + swell*0.35;
+      o.frequency.setValueAtTime(f0*0.55, now);
+      o.frequency.linearRampToValueAtTime(f0*1.2, now + riseTime);
+      o.frequency.linearRampToValueAtTime(f0*0.45, now + duration*0.9);
+      if(mode === "animal" && Math.random() < 0.75){
+        const jumpAt = now + duration*(0.3 + Math.random()*0.4);
+        const jumpTo = f0*(0.6 + Math.random()*1.2);
+        o.frequency.setValueAtTime(o.frequency.value, jumpAt);
+        o.frequency.linearRampToValueAtTime(jumpTo, jumpAt + 0.07);
+      }
+    });
+
+    // Wobble => vibrato (detune LFO) + tremolo (amplitude flutter) = the "brrrt" buzz
+    const wobbleRate = 7 + wobble*30;
+    const vibratoDepth = wobble*450;
+    const vibLfo = ctx.createOscillator();
+    vibLfo.type = "sine";
+    vibLfo.frequency.value = wobbleRate;
+    const vibGain = ctx.createGain();
+    vibGain.gain.value = vibratoDepth;
+    vibLfo.connect(vibGain);
+    oscs.forEach(o=> vibGain.connect(o.detune));
+
+    const tremoloGain = ctx.createGain();
+    tremoloGain.gain.value = 1;
+    const tremLfo = ctx.createOscillator();
+    tremLfo.type = "sine";
+    tremLfo.frequency.value = wobbleRate*0.5 + 4;
+    const tremDepthGain = ctx.createGain();
+    const tremDepth = 0.15 + wobble*0.55;
+    tremDepthGain.gain.value = tremDepth;
+    tremLfo.connect(tremDepthGain);
+    tremDepthGain.connect(tremoloGain.gain);
+    tremoloGain.gain.value = 1 - tremDepth/2;
+
+    shaper.connect(tremoloGain);
+    tremoloGain.connect(masterGain);
+
+    // -- Moisture: filtered noise layer for wet/squelchy texture --
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = makeNoiseBuffer(ctx, duration + tailPad);
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = "bandpass";
+    noiseFilter.frequency.value = 350 + moisture*1300;
+    noiseFilter.Q.value = 0.6 + moisture*2.2;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.0001, now);
+
+    const noiseLfo = ctx.createOscillator();
+    noiseLfo.type = "sine";
+    noiseLfo.frequency.value = 2.5 + moisture*8;
+    const noiseLfoGain = ctx.createGain();
+    noiseLfoGain.gain.value = 150 + moisture*500;
+    noiseLfo.connect(noiseLfoGain);
+    noiseLfoGain.connect(noiseFilter.frequency);
+
+    noiseSrc.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(masterGain);
+
+    noiseGain.gain.linearRampToValueAtTime(0.12 + moisture*0.5, now + 0.05 + swell*0.2);
+    noiseGain.gain.linearRampToValueAtTime(0.05 + moisture*0.15, now + duration*0.9);
+    noiseGain.gain.linearRampToValueAtTime(0.0001, now + duration + tailPad*0.6);
+
+    // -- Whistle: high sine partial for the comedic squeak --
+    let whistleOsc, whistleGain;
+    if(whistleAmt > 0.01){
+      whistleOsc = ctx.createOscillator();
+      whistleOsc.type = "sine";
+      const wBase = 850 + pitch*950;
+      whistleOsc.frequency.setValueAtTime(wBase, now);
+      whistleOsc.frequency.linearRampToValueAtTime(wBase*1.35, now + duration*0.7);
+      whistleGain = ctx.createGain();
+      whistleGain.gain.setValueAtTime(0.0001, now);
+      whistleGain.gain.linearRampToValueAtTime(whistleAmt*0.22, now + 0.12 + swell*0.25);
+      whistleGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+      whistleOsc.connect(whistleGain);
+      whistleGain.connect(masterGain);
+    }
+
+    // -- Master envelope (Swell = attack time / crescendo) --
+    const attack = 0.03 + swell*1.1;
+    const peak = 0.85;
+    masterGain.gain.linearRampToValueAtTime(peak, now + attack);
+    masterGain.gain.linearRampToValueAtTime(peak*0.35, now + attack + duration*0.45);
+    masterGain.gain.linearRampToValueAtTime(0.0001, now + duration + tailPad);
+
+    masterGain.connect(ctx.destination);
+
+    const stopAt = now + duration + tailPad + 0.1;
+    oscs.forEach(o=>{ o.start(now); o.stop(stopAt); });
+    vibLfo.start(now); vibLfo.stop(stopAt);
+    tremLfo.start(now); tremLfo.stop(stopAt);
+    noiseLfo.start(now); noiseLfo.stop(stopAt);
+    noiseSrc.start(now); noiseSrc.stop(stopAt);
+    if(whistleOsc){ whistleOsc.start(now); whistleOsc.stop(stopAt); }
+
+    const cleanupNodes = [masterGain, lowpass, bodyGain, shaper, tremoloGain, vibGain,
+      tremDepthGain, noiseFilter, noiseGain, noiseLfoGain];
+    if(whistleGain) cleanupNodes.push(whistleGain);
+    setTimeout(()=>{
+      cleanupNodes.forEach(n=>{ try{ n.disconnect(); }catch(e){} });
+    }, (stopAt - ctx.currentTime + 0.2) * 1000);
+
+    return duration + tailPad;
+  }
+
+  // ---------- UI wiring ----------
+  const lcdLine1 = document.getElementById("lcdLine1");
+  const lcdLine2 = document.getElementById("lcdLine2");
+  const triggerBtn = document.getElementById("triggerBtn");
+  const autoSwitch = document.getElementById("autoSwitch");
+  const modeSwitch = document.getElementById("modeSwitch");
+  const presetsGrid = document.getElementById("presetsGrid");
+
+  let activePresetIndex = -1;
+
+  function modeLabel(m){
+    return m === "male" ? "MALE" : m === "female" ? "FEMALE" : "ANIMAL";
+  }
+
+  function updateLcdIdle(text){
+    lcdLine1.textContent = text || "BEREIT";
+    lcdLine2.textContent = "MODE: " + modeLabel(state.mode) + (activePresetIndex>=0 ? " · " + PRESETS[activePresetIndex].name.toUpperCase() : "");
+  }
+
+  function setKnobVisual(key, value){
+    const el = document.getElementById("knob-" + key);
+    const indicator = el.querySelector(".knob-indicator");
+    const angle = -135 + value*270;
+    indicator.style.transform = "translateX(-50%) rotate(" + angle + "deg)";
+  }
+
+  function setKnob(key, value, opts){
+    opts = opts || {};
+    value = clamp(value, 0, 1);
+    state[key] = value;
+    setKnobVisual(key, value);
+    if(!opts.silentPreset) activePresetIndex = -1;
+    highlightActivePreset();
+    if(!opts.noLcdUpdate) updateLcdIdle();
+  }
+
+  function initKnobDrag(key){
+    const el = document.getElementById("knob-" + key);
+    let dragging = false;
+    let startY = 0;
+    let startVal = 0;
+
+    function onMove(e){
+      if(!dragging) return;
+      const y = e.touches ? e.touches[0].clientY : e.clientY;
+      const delta = (startY - y) / 140;
+      setKnob(key, startVal + delta);
+      e.preventDefault();
+    }
+    function onUp(){
+      dragging = false;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    el.addEventListener("pointerdown", (e)=>{
+      dragging = true;
+      startY = e.clientY;
+      startVal = state[key];
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      e.preventDefault();
+    });
+    el.addEventListener("wheel", (e)=>{
+      e.preventDefault();
+      setKnob(key, state[key] + (e.deltaY < 0 ? 0.02 : -0.02));
+    }, { passive:false });
+  }
+
+  KNOBS.forEach(k=>{
+    initKnobDrag(k);
+    setKnobVisual(k, state[k]);
+  });
+
+  modeSwitch.addEventListener("click", (e)=>{
+    const btn = e.target.closest(".mode-btn");
+    if(!btn) return;
+    state.mode = btn.dataset.mode;
+    activePresetIndex = -1;
+    [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=> b.classList.toggle("active", b === btn));
+    highlightActivePreset();
+    updateLcdIdle();
+  });
+
+  function flashTrigger(){
+    triggerBtn.classList.add("firing");
+    setTimeout(()=> triggerBtn.classList.remove("firing"), 350);
+  }
+
+  function fireFart(paramsOverride){
+    const params = paramsOverride || state;
+    const dur = playFart(params);
+    flashTrigger();
+    const phrases = ["PRRRT...", "BRRRAAAP!", "*PLOPP*", "FFFRRRT~", "TOOOT!", "SQUEEEEZE"];
+    lcdLine1.textContent = phrases[Math.floor(Math.random()*phrases.length)];
+    setTimeout(()=> updateLcdIdle(), Math.min(2200, dur*1000));
+  }
+
+  triggerBtn.addEventListener("click", ()=> fireFart());
+
+  // ---------- Auto mode ----------
+  let autoTimer = null;
+  function scheduleNextAuto(){
+    if(!state.auto) return;
+    const base = 8 - state.frequenz*7.4; // 8s (langsam) .. 0.6s (schnell)
+    const jitter = base * 0.35 * (Math.random()*2 - 1);
+    const wait = Math.max(0.3, base + jitter);
+    autoTimer = setTimeout(()=>{
+      const jittered = Object.assign({}, state, {
+        tonhoehe: clamp(state.tonhoehe + (Math.random()-0.5)*0.12, 0, 1),
+        swell: clamp(state.swell + (Math.random()-0.5)*0.15, 0, 1)
+      });
+      fireFart(jittered);
+      scheduleNextAuto();
+    }, wait*1000);
+  }
+  function setAuto(on){
+    state.auto = on;
+    autoSwitch.setAttribute("aria-pressed", on ? "true" : "false");
+    if(on){
+      ensureAudioCtx();
+      scheduleNextAuto();
+    } else if(autoTimer){
+      clearTimeout(autoTimer);
+      autoTimer = null;
+    }
+  }
+  autoSwitch.addEventListener("click", ()=> setAuto(!state.auto));
+
+  // ---------- Presets ----------
+  PRESETS.forEach((preset, idx)=>{
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "preset-btn";
+    btn.innerHTML = '<span class="pled"></span><span>' + preset.name + "</span>";
+    btn.addEventListener("click", ()=>{
+      KNOBS.forEach(k=> setKnob(k, preset[k], { silentPreset:true, noLcdUpdate:true }));
+      state.mode = preset.mode;
+      [...modeSwitch.querySelectorAll(".mode-btn")].forEach(b=>
+        b.classList.toggle("active", b.dataset.mode === preset.mode));
+      activePresetIndex = idx;
+      highlightActivePreset();
+      updateLcdIdle("PRESET: " + preset.name.toUpperCase());
+      fireFart();
+    });
+    presetsGrid.appendChild(btn);
+  });
+
+  function highlightActivePreset(){
+    [...presetsGrid.children].forEach((btn, i)=>
+      btn.classList.toggle("active", i === activePresetIndex));
+  }
+
+  updateLcdIdle();
+})();
+</script>
+</body>
+</html>
