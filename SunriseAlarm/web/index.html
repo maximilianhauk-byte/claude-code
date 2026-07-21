@@ -1,0 +1,762 @@
+<title>Sunrise Alarm — Testversion</title>
+<meta name="description" content="Browser-Testversion des Sonnenaufgangsweckers: Standort, sanfter Klingelton und ein visueller Aufhell-Effekt zum Ausprobieren in Safari.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<style>
+  :root {
+    --bg: #eef0f4;
+    --surface: #ffffff;
+    --surface-2: #f4f5f8;
+    --ink: #1a1c24;
+    --muted: #62667a;
+    --line: #dcdfe6;
+    --accent: #e0552b;
+    --accent-ink: #ffffff;
+    --dusk: #423a7d;
+    --good: #1f8f5f;
+    --good-bg: #e3f4ec;
+    --shadow: 0 1px 2px rgba(20, 20, 30, .04), 0 8px 24px -12px rgba(20, 20, 30, .18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0b12;
+      --surface: #15161f;
+      --surface-2: #1b1c28;
+      --ink: #eef0f4;
+      --muted: #9aa0b4;
+      --line: #2a2c3a;
+      --accent: #ff8a5c;
+      --accent-ink: #1a1204;
+      --dusk: #7c72c9;
+      --good: #57caa0;
+      --good-bg: #113328;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 28px -12px rgba(0, 0, 0, .6);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0a0b12; --surface: #15161f; --surface-2: #1b1c28; --ink: #eef0f4;
+    --muted: #9aa0b4; --line: #2a2c3a; --accent: #ff8a5c; --accent-ink: #1a1204;
+    --dusk: #7c72c9; --good: #57caa0; --good-bg: #113328;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.6);
+  }
+  :root[data-theme="light"] {
+    --bg: #eef0f4; --surface: #ffffff; --surface-2: #f4f5f8; --ink: #1a1c24;
+    --muted: #62667a; --line: #dcdfe6; --accent: #e0552b; --accent-ink: #ffffff;
+    --dusk: #423a7d; --good: #1f8f5f; --good-bg: #e3f4ec;
+    --shadow: 0 1px 2px rgba(20,20,30,.04), 0 8px 24px -12px rgba(20,20,30,.18);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 0 0 max(24px, env(safe-area-inset-bottom));
+  }
+  .display { font-family: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", serif; }
+  .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  main {
+    width: 100%;
+    max-width: 480px;
+    padding: max(20px, env(safe-area-inset-top)) 18px 0;
+  }
+
+  header.page-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  header.page-head h1 {
+    font-size: 1.3rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .eyebrow {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 5px 11px;
+    border-radius: 99px;
+    background: var(--surface-2);
+    color: var(--muted);
+    white-space: nowrap;
+    transition: background .3s, color .3s;
+  }
+  .status-pill.is-live { background: var(--good-bg); color: var(--good); }
+  .status-pill .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.is-live .dot { animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+  /* --- Sky panel: visual stand-in for "screen gets brighter" --- */
+  .sky {
+    position: relative;
+    height: 220px;
+    border-radius: 20px;
+    overflow: hidden;
+    background: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--dusk) calc(70% - 50% * var(--progress, 0)), var(--accent) calc(30% + 50% * var(--progress, 0))),
+      color-mix(in srgb, var(--bg) 100%, var(--accent) calc(var(--progress, 0) * 40%))
+    );
+    box-shadow: var(--shadow);
+    margin-bottom: 18px;
+  }
+  .sky .sun {
+    position: absolute;
+    left: 50%;
+    bottom: calc(-30px + var(--progress, 0) * 130px);
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    transform: translateX(-50%);
+    background: radial-gradient(circle at 50% 50%, #fff8ec calc(10% + var(--progress,0)*10%), var(--accent) 70%);
+    box-shadow: 0 0 calc(20px + var(--progress, 0) * 90px) calc(4px + var(--progress, 0) * 26px) color-mix(in srgb, var(--accent) 70%, transparent);
+    transition: box-shadow .4s linear;
+  }
+  .sky .sky-readout {
+    position: absolute;
+    top: 12px; left: 14px; right: 14px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,.35);
+    opacity: .92;
+  }
+
+  section.card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--shadow);
+  }
+  section.card h2 {
+    font-size: 0.72rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: none; }
+  .row .label { color: var(--muted); font-size: 0.88rem; }
+  .row .value { font-weight: 600; font-size: 0.92rem; text-align: right; }
+
+  button.locate {
+    width: 100%;
+    margin-top: 4px;
+    padding: 11px;
+    border-radius: 11px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+  }
+  button.locate:active { opacity: .7; }
+
+  .field { margin-bottom: 14px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-head {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.88rem;
+    margin-bottom: 6px;
+  }
+  .field-head .label { color: var(--ink); }
+  .field-head .value { color: var(--accent); font-weight: 700; }
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+
+  .test-grid {
+    display: grid;
+    gap: 10px;
+  }
+  button.test {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    width: 100%;
+    padding: 13px 15px;
+    border-radius: 13px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  button.test.secondary {
+    background: var(--surface-2);
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  button.test:active { opacity: .8; }
+  button.test .t-title { font-weight: 700; font-size: 0.94rem; }
+  button.test .t-sub { font-size: 0.76rem; opacity: .85; }
+  button.test:disabled { opacity: .45; }
+
+  details.hints {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+  }
+  details.hints summary {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    list-style: none;
+  }
+  details.hints summary::-webkit-details-marker { display: none; }
+  details.hints summary::after { content: " ›"; }
+  details.hints[open] summary::after { content: " ‹"; }
+  details.hints p {
+    font-size: 0.82rem;
+    line-height: 1.5;
+    color: var(--muted);
+    margin: 10px 0 0;
+  }
+
+  .manual-toggle {
+    background: none; border: none; color: var(--accent);
+    font: inherit; font-size: 0.82rem; font-weight: 600;
+    padding: 8px 0 0; cursor: pointer;
+  }
+  .manual-fields { display: none; gap: 8px; margin-top: 10px; }
+  .manual-fields.open { display: grid; grid-template-columns: 1fr 1fr; }
+  .manual-fields input {
+    font: inherit; font-family: ui-monospace, monospace;
+    padding: 9px 10px; border-radius: 9px; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--ink); width: 100%;
+  }
+  .manual-fields button {
+    grid-column: 1 / -1; margin-top: 2px;
+  }
+
+  /* --- Ringing overlay --- */
+  .ring-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 20px max(28px, env(safe-area-inset-bottom));
+    background:
+      radial-gradient(ellipse at 50% 20%, color-mix(in srgb, #fff8ec calc(var(--progress,0)*85%), transparent), transparent 65%),
+      linear-gradient(to bottom, color-mix(in srgb, var(--dusk) 65%, var(--accent) calc(var(--progress,0)*45%)), color-mix(in srgb, var(--bg) 100%, var(--accent) calc(var(--progress,0)*35%)));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .5s ease;
+  }
+  .ring-overlay.visible { opacity: 1; pointer-events: auto; }
+  .ring-content {
+    width: 100%; max-width: 420px;
+    text-align: center;
+    color: #fff8ec;
+    margin-bottom: auto; margin-top: 18vh;
+  }
+  .ring-content h2 {
+    font-family: ui-serif, Georgia, serif;
+    font-size: 2rem;
+    margin: 0 0 8px;
+    text-shadow: 0 2px 10px rgba(0,0,0,.25);
+  }
+  .ring-meta {
+    display: flex; justify-content: center; gap: 18px;
+    font-size: 0.8rem; opacity: .88;
+  }
+  button.wake {
+    width: 100%; max-width: 420px;
+    padding: 16px;
+    border-radius: 15px;
+    border: none;
+    background: #fff8ec;
+    color: #26170a;
+    font: inherit;
+    font-weight: 700;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button.wake:active { opacity: .85; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .status-pill.is-live .dot { animation: none; }
+    .sky .sun, .ring-overlay { transition: none; }
+  }
+</style>
+
+<main>
+  <header class="page-head">
+    <div>
+      <span class="eyebrow">Sunrise Alarm</span>
+      <h1>Testversion</h1>
+    </div>
+    <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">Bereit</span></span>
+  </header>
+
+  <div class="sky" id="sky" style="--progress:0">
+    <div class="sky-readout">
+      <span id="skyTime">0%</span>
+      <span id="skyLabel">Vorschau</span>
+    </div>
+    <div class="sun"></div>
+  </div>
+
+  <section class="card">
+    <h2>Standort</h2>
+    <div class="row">
+      <span class="label">Position</span>
+      <span class="value mono" id="coordValue">wird ermittelt …</span>
+    </div>
+    <div class="row">
+      <span class="label">Nächster Sonnenaufgang</span>
+      <span class="value" id="sunriseValue">–</span>
+    </div>
+    <div class="row">
+      <span class="label">Weckzeit (mit Vorlauf)</span>
+      <span class="value" id="wakeValue">–</span>
+    </div>
+    <button class="locate" id="locateBtn">Standort abfragen</button>
+    <button class="manual-toggle" id="manualToggle" type="button">Standort manuell eingeben</button>
+    <div class="manual-fields" id="manualFields">
+      <input type="number" step="0.0001" placeholder="Breitengrad" id="latInput">
+      <input type="number" step="0.0001" placeholder="Längengrad" id="lonInput">
+      <button class="locate" id="manualApply" type="button">Übernehmen</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Einstellungen</h2>
+    <div class="field">
+      <div class="field-head">
+        <span class="label">Vorlaufzeit vor Sonnenaufgang</span>
+        <span class="value mono" id="offsetValue">10 Min.</span>
+      </div>
+      <input type="range" id="offsetSlider" min="1" max="60" value="10">
+    </div>
+    <div class="field">
+      <div class="field-head">
+        <span class="label">Einblendzeit (Ton &amp; Licht)</span>
+        <span class="value mono" id="rampValue">10 Min.</span>
+      </div>
+      <input type="range" id="rampSlider" min="1" max="30" value="10">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Selbst ausprobieren</h2>
+    <div class="test-grid">
+      <button class="test" id="previewBtn" type="button">
+        <span class="t-title">Vorschau starten</span>
+        <span class="t-sub">Komplette Sequenz in 20 Sekunden, gerafft</span>
+      </button>
+      <button class="test secondary" id="realtimeBtn" type="button">
+        <span class="t-title">Echtzeit-Test</span>
+        <span class="t-sub" id="realtimeSub">In tatsächlicher Einblendzeit (10 Min.)</span>
+      </button>
+      <button class="test secondary" id="debugBtn" type="button">
+        <span class="t-title">Testalarm in 60 Sekunden</span>
+        <span class="t-sub" id="debugSub">Zum Ausprobieren mit Countdown</span>
+      </button>
+    </div>
+  </section>
+
+  <details class="hints">
+    <summary>Einschränkungen dieser Browser-Testversion</summary>
+    <p>Diese Seite läuft als reine Web-Vorschau in Safari und dient nur zum Ausprobieren des Klang- und Licht-Effekts. Sie kann dich <strong>nicht</strong> zuverlässig wecken, wenn das iPhone gesperrt ist oder Safari im Hintergrund liegt – dafür stoppt iOS Web-Timer und Ton. Halte diese Seite für einen Test einfach geöffnet und das Display an. Für einen echten, verlässlichen Wecker ist die native iPhone-App gedacht, die zusätzlich einen Hintergrund-Mechanismus und eine Backup-Benachrichtigung nutzt. Die Bildschirm-Aufhellung wird hier über den simulierten Himmel dargestellt, da Webseiten die echte Gerätehelligkeit nicht steuern dürfen.</p>
+  </details>
+</main>
+
+<div class="ring-overlay" id="ringOverlay" style="--progress:0">
+  <div class="ring-content">
+    <h2>Guten Morgen</h2>
+    <div class="ring-meta">
+      <span>Lautstärke <span class="mono" id="ringVolume">0%</span></span>
+      <span>Licht <span class="mono" id="ringBrightness">0%</span></span>
+    </div>
+  </div>
+  <button class="wake" id="wakeBtn" type="button">Aufwachen</button>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Sun calculation (NOAA solar position algorithm) ----------
+  function toRad(d) { return d * Math.PI / 180; }
+  function toDeg(r) { return r * 180 / Math.PI; }
+  function normalizeDeg(d) { d = d % 360; return d < 0 ? d + 360 : d; }
+
+  function julianDay(y, m, d) {
+    if (m <= 2) { y -= 1; m += 12; }
+    var a = Math.floor(y / 100);
+    var b = 2 - a + Math.floor(a / 4);
+    return Math.floor(365.25 * (y + 4716)) + Math.floor(30.6001 * (m + 1)) + d + b - 1524.5;
+  }
+
+  function sunriseOn(dateUTC, lat, lon) {
+    var y = dateUTC.getUTCFullYear(), m = dateUTC.getUTCMonth() + 1, d = dateUTC.getUTCDate();
+    var jd = julianDay(y, m, d);
+    var t = (jd - 2451545.0) / 36525.0;
+
+    var l0 = normalizeDeg(280.46646 + t * (36000.76983 + t * 0.0003032));
+    var M = 357.52911 + t * (35999.05029 - 0.0001537 * t);
+    var e = 0.016708634 - t * (0.000042037 + 0.0000001267 * t);
+    var mRad = toRad(M);
+
+    var c = Math.sin(mRad) * (1.914602 - t * (0.004817 + 0.000014 * t))
+      + Math.sin(2 * mRad) * (0.019993 - 0.000101 * t)
+      + Math.sin(3 * mRad) * 0.000289;
+
+    var trueLon = l0 + c;
+    var omega = 125.04 - 1934.136 * t;
+    var appLon = trueLon - 0.00569 - 0.00478 * Math.sin(toRad(omega));
+
+    var epsilon0 = 23 + (26 + (21.448 - t * (46.815 + t * (0.00059 - t * 0.001813))) / 60) / 60;
+    var epsilon = epsilon0 + 0.00256 * Math.cos(toRad(omega));
+
+    var decl = Math.asin(Math.sin(toRad(epsilon)) * Math.sin(toRad(appLon)));
+
+    var y2 = Math.pow(Math.tan(toRad(epsilon / 2)), 2);
+    var eqTime = 4 * toDeg(
+      y2 * Math.sin(2 * toRad(l0))
+      - 2 * e * Math.sin(mRad)
+      + 4 * e * y2 * Math.sin(mRad) * Math.cos(2 * toRad(l0))
+      - 0.5 * y2 * y2 * Math.sin(4 * toRad(l0))
+      - 1.25 * e * e * Math.sin(2 * mRad)
+    );
+
+    var latRad = toRad(lat);
+    var cosHA = (Math.cos(toRad(90.833)) / (Math.cos(latRad) * Math.cos(decl))) - Math.tan(latRad) * Math.tan(decl);
+    if (cosHA < -1 || cosHA > 1) return null; // Polartag/-nacht
+    var ha = toDeg(Math.acos(cosHA));
+
+    var solarNoonMinutes = 720 - 4 * lon - eqTime;
+    var sunriseMinutesUTC = solarNoonMinutes - 4 * ha;
+
+    var midnightUTC = Date.UTC(y, m - 1, d);
+    return new Date(midnightUTC + sunriseMinutesUTC * 60000);
+  }
+
+  function nextSunrise(lat, lon, from) {
+    from = from || new Date();
+    for (var i = 0; i < 3; i++) {
+      var day = new Date(from.getTime() + i * 86400000);
+      var s = sunriseOn(day, lat, lon);
+      if (s && s > from) return s;
+    }
+    return null;
+  }
+
+  // ---------- Settings persistence ----------
+  var STORAGE_KEY = "sunriseAlarmWebSettings";
+  var settings = { offsetMinutes: 10, rampMinutes: 10 };
+  try {
+    var saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    if (saved.offsetMinutes) settings.offsetMinutes = saved.offsetMinutes;
+    if (saved.rampMinutes) settings.rampMinutes = saved.rampMinutes;
+  } catch (e) { /* ignore */ }
+  function persist() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) { /* ignore */ }
+  }
+
+  // ---------- DOM ----------
+  var el = {
+    statusPill: document.getElementById("statusPill"),
+    statusText: document.getElementById("statusText"),
+    sky: document.getElementById("sky"),
+    skyTime: document.getElementById("skyTime"),
+    skyLabel: document.getElementById("skyLabel"),
+    coordValue: document.getElementById("coordValue"),
+    sunriseValue: document.getElementById("sunriseValue"),
+    wakeValue: document.getElementById("wakeValue"),
+    locateBtn: document.getElementById("locateBtn"),
+    manualToggle: document.getElementById("manualToggle"),
+    manualFields: document.getElementById("manualFields"),
+    latInput: document.getElementById("latInput"),
+    lonInput: document.getElementById("lonInput"),
+    manualApply: document.getElementById("manualApply"),
+    offsetSlider: document.getElementById("offsetSlider"),
+    offsetValue: document.getElementById("offsetValue"),
+    rampSlider: document.getElementById("rampSlider"),
+    rampValue: document.getElementById("rampValue"),
+    previewBtn: document.getElementById("previewBtn"),
+    realtimeBtn: document.getElementById("realtimeBtn"),
+    realtimeSub: document.getElementById("realtimeSub"),
+    debugBtn: document.getElementById("debugBtn"),
+    debugSub: document.getElementById("debugSub"),
+    ringOverlay: document.getElementById("ringOverlay"),
+    ringVolume: document.getElementById("ringVolume"),
+    ringBrightness: document.getElementById("ringBrightness"),
+    wakeBtn: document.getElementById("wakeBtn")
+  };
+
+  var coord = null; // { lat, lon }
+
+  function fmtTime(date) {
+    if (!date) return "–";
+    return date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function setStatus(text, live) {
+    el.statusText.textContent = text;
+    el.statusPill.classList.toggle("is-live", !!live);
+  }
+
+  function refreshSunTimes() {
+    if (!coord) return;
+    var sunrise = nextSunrise(coord.lat, coord.lon);
+    el.sunriseValue.textContent = sunrise ? fmtTime(sunrise) : "kein Sonnenaufgang (Polartag/-nacht)";
+    if (sunrise) {
+      var wake = new Date(sunrise.getTime() - settings.offsetMinutes * 60000);
+      el.wakeValue.textContent = fmtTime(wake);
+    } else {
+      el.wakeValue.textContent = "–";
+    }
+  }
+
+  function applyCoord(lat, lon) {
+    coord = { lat: lat, lon: lon };
+    el.coordValue.textContent = lat.toFixed(3) + ", " + lon.toFixed(3);
+    setStatus("Bereit", false);
+    refreshSunTimes();
+  }
+
+  el.locateBtn.addEventListener("click", function () {
+    if (!("geolocation" in navigator)) {
+      setStatus("Geolocation nicht verfügbar", false);
+      return;
+    }
+    setStatus("Standort wird ermittelt …", false);
+    navigator.geolocation.getCurrentPosition(
+      function (pos) { applyCoord(pos.coords.latitude, pos.coords.longitude); },
+      function () { setStatus("Standort verweigert – manuell eingeben", false); },
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  });
+
+  el.manualToggle.addEventListener("click", function () {
+    el.manualFields.classList.toggle("open");
+  });
+  el.manualApply.addEventListener("click", function () {
+    var lat = parseFloat(el.latInput.value), lon = parseFloat(el.lonInput.value);
+    if (isNaN(lat) || isNaN(lon)) return;
+    applyCoord(lat, lon);
+  });
+
+  el.offsetSlider.value = settings.offsetMinutes;
+  el.rampSlider.value = settings.rampMinutes;
+  el.offsetValue.textContent = settings.offsetMinutes + " Min.";
+  el.rampValue.textContent = settings.rampMinutes + " Min.";
+  el.realtimeSub.textContent = "In tatsächlicher Einblendzeit (" + settings.rampMinutes + " Min.)";
+
+  el.offsetSlider.addEventListener("input", function () {
+    settings.offsetMinutes = parseInt(el.offsetSlider.value, 10);
+    el.offsetValue.textContent = settings.offsetMinutes + " Min.";
+    persist();
+    refreshSunTimes();
+  });
+  el.rampSlider.addEventListener("input", function () {
+    settings.rampMinutes = parseInt(el.rampSlider.value, 10);
+    el.rampValue.textContent = settings.rampMinutes + " Min.";
+    el.realtimeSub.textContent = "In tatsächlicher Einblendzeit (" + settings.rampMinutes + " Min.)";
+    persist();
+  });
+
+  // ---------- Audio: procedurally generated soft chime ----------
+  var audioCtx = null, masterGain = null, chimeIntervalId = null;
+  var PARTIALS = [
+    { freq: 523.25, amp: 0.5, decay: 1.6 },
+    { freq: 784.0, amp: 0.22, decay: 1.1 },
+    { freq: 1046.5, amp: 0.12, decay: 0.8 }
+  ];
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      masterGain = audioCtx.createGain();
+      masterGain.gain.value = 0;
+      masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+  }
+
+  function strikeChime(startTime) {
+    PARTIALS.forEach(function (p) {
+      var osc = audioCtx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = p.freq;
+      var gain = audioCtx.createGain();
+      var attackEnd = startTime + 0.06;
+      var tailEnd = startTime + p.decay * 3;
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(p.amp, attackEnd);
+      gain.gain.exponentialRampToValueAtTime(0.0001, tailEnd);
+      osc.connect(gain).connect(masterGain);
+      osc.start(startTime);
+      osc.stop(tailEnd + 0.05);
+    });
+  }
+
+  function startChimeLoop() {
+    ensureAudio();
+    strikeChime(audioCtx.currentTime + 0.05);
+    chimeIntervalId = setInterval(function () {
+      strikeChime(audioCtx.currentTime + 0.05);
+    }, 4000);
+  }
+
+  function stopChimeLoop() {
+    if (chimeIntervalId) { clearInterval(chimeIntervalId); chimeIntervalId = null; }
+    if (masterGain && audioCtx) {
+      masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+      masterGain.gain.setValueAtTime(masterGain.gain.value, audioCtx.currentTime);
+      masterGain.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+    }
+  }
+
+  // ---------- Ramp: drives audio volume + sky/overlay progress together ----------
+  var rampRAF = null, rampActive = false;
+  var wakeLock = null;
+
+  function requestWakeLock() {
+    if ("wakeLock" in navigator) {
+      navigator.wakeLock.request("screen").then(function (lock) { wakeLock = lock; }).catch(function () {});
+    }
+  }
+  function releaseWakeLock() {
+    if (wakeLock) { wakeLock.release().catch(function () {}); wakeLock = null; }
+  }
+
+  function setProgress(p) {
+    el.sky.style.setProperty("--progress", p);
+    el.ringOverlay.style.setProperty("--progress", p);
+    el.ringVolume.textContent = Math.round(p * 100) + "%";
+    el.ringBrightness.textContent = Math.round(p * 100) + "%";
+    el.skyTime.textContent = Math.round(p * 100) + "%";
+    if (masterGain) masterGain.gain.value = p;
+  }
+
+  function startRinging(durationSeconds) {
+    rampActive = true;
+    ensureAudio();
+    startChimeLoop();
+    requestWakeLock();
+    el.ringOverlay.classList.add("visible");
+    setStatus("Klingelt", true);
+    el.skyLabel.textContent = "Klingelt";
+
+    var start = performance.now();
+    var durationMs = durationSeconds * 1000;
+    function tick(now) {
+      if (!rampActive) return;
+      var progress = Math.min(1, (now - start) / durationMs);
+      setProgress(progress);
+      if (progress < 1) {
+        rampRAF = requestAnimationFrame(tick);
+      }
+    }
+    rampRAF = requestAnimationFrame(tick);
+  }
+
+  function stopRinging() {
+    rampActive = false;
+    if (rampRAF) cancelAnimationFrame(rampRAF);
+    stopChimeLoop();
+    releaseWakeLock();
+    el.ringOverlay.classList.remove("visible");
+    setStatus("Bereit", false);
+    el.skyLabel.textContent = "Vorschau";
+    var fadeStart = performance.now();
+    var fromProgress = parseFloat(el.sky.style.getPropertyValue("--progress")) || 0;
+    function fadeOut(now) {
+      var p = Math.max(0, fromProgress * (1 - (now - fadeStart) / 600));
+      setProgress(p);
+      if (p > 0) requestAnimationFrame(fadeOut);
+    }
+    requestAnimationFrame(fadeOut);
+  }
+
+  el.wakeBtn.addEventListener("click", stopRinging);
+
+  // ---------- Test entry points ----------
+  el.previewBtn.addEventListener("click", function () { startRinging(20); });
+  el.realtimeBtn.addEventListener("click", function () { startRinging(settings.rampMinutes * 60); });
+
+  var debugTimeoutId = null, debugIntervalId = null, debugDefaultLabel = null;
+  el.debugBtn.addEventListener("click", function () {
+    if (debugTimeoutId) return; // already counting down
+    ensureAudio(); // must init on user gesture while Safari still considers this "interactive"
+    debugDefaultLabel = el.debugSub.textContent;
+    var remaining = 60;
+    el.debugBtn.disabled = true;
+    el.debugSub.textContent = "Startet in " + remaining + "s – Seite geöffnet lassen";
+    debugIntervalId = setInterval(function () {
+      remaining -= 1;
+      if (remaining > 0) {
+        el.debugSub.textContent = "Startet in " + remaining + "s – Seite geöffnet lassen";
+      }
+    }, 1000);
+    debugTimeoutId = setTimeout(function () {
+      clearInterval(debugIntervalId);
+      debugIntervalId = null;
+      debugTimeoutId = null;
+      el.debugBtn.disabled = false;
+      el.debugSub.textContent = debugDefaultLabel;
+      startRinging(20);
+    }, 60000);
+  });
+
+  // ---------- Init ----------
+  setStatus("Bereit", false);
+  el.locateBtn.click();
+})();
+</script>

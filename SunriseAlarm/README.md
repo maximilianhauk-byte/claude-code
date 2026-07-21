@@ -8,11 +8,29 @@ Der Sonnenaufgang wird komplett offline berechnet (NOAA-Sonnenstand-
 Algorithmus, keine externe API), aus dem per CoreLocation ermittelten
 Standort.
 
+## Browser-Testversion (kein Mac/Xcode nötig)
+
+Unter `web/index.html` liegt eine eigenständige HTML-Seite, die dieselbe
+Sonnenaufgangs-Berechnung, denselben prozedural erzeugten Klingelton und
+eine visuelle Aufhell-Simulation im Browser nachbildet – zum sofortigen
+Ausprobieren in Safari auf dem iPhone, ganz ohne Installation.
+
+Öffne dazu einfach die Datei `SunriseAlarm/web/index.html` in Safari (lokal
+per Airdrop/Dateien-App aufs iPhone übertragen, oder von einem beliebigen
+Webserver aus). **Wichtig:** Das ist bewusst nur eine Test-/Vorschauversion.
+Da Webseiten in Safari keine Hintergrundprozesse und keine echte
+Gerätehelligkeit steuern dürfen, kann sie dich – anders als die native
+App – nicht zuverlässig wecken, wenn das Handy gesperrt ist. Die
+Einschränkungen sind auch direkt in der Seite unter "Einschränkungen
+dieser Browser-Testversion" erklärt.
+
 ## Projektstruktur
 
 ```
 SunriseAlarm/
 ├── project.yml                  # XcodeGen-Projektdefinition
+├── web/
+│   └── index.html                # Eigenständige Browser-Testversion (Safari)
 └── Sources/
     ├── SunriseAlarmApp.swift    # App-Einstiegspunkt
     ├── Models/
