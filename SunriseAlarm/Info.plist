@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Reference Info.plist for the SunriseAlarm target.
+
+  Modern Xcode "App" templates generate Info.plist automatically from the
+  target's Info tab (GENERATE_INFOPLIST_FILE = YES) instead of using a
+  checked-in file like this one. Either:
+    (a) copy the keys below into the target's Info tab in Xcode, or
+    (b) point the target's "Info.plist File" build setting at this file.
+  See ../README.md step 3 for exact instructions.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Sunrise Alarm benötigt deinen Standort, um die genaue Sonnenaufgangszeit für deinen aktuellen Ort zu berechnen.</string>
+
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>processing</string>
+    </array>
+
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.sunrisealarm.reschedule</string>
+    </array>
+
+    <key>UILaunchScreen</key>
+    <dict/>
+
+    <key>UIRequiresFullScreen</key>
+    <true/>
+
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+</dict>
+</plist>
