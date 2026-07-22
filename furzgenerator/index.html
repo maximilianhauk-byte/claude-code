@@ -162,7 +162,7 @@
     width: 4px; height: 44%;
     background: #fff2dd;
     border-radius: 2px;
-    transform-origin: 50% 220%;
+    transform-origin: 50% 100%;
     transform: translateX(-50%) rotate(-135deg);
     box-shadow: 0 0 2px rgba(0,0,0,.6);
     pointer-events:none;
@@ -363,7 +363,11 @@
   let sharedNoiseBuffer = null;
   function getNoiseBuffer(ctx){
     if(!sharedNoiseBuffer || sharedNoiseBuffer.sampleRate !== ctx.sampleRate){
-      const length = ctx.sampleRate * 4; // 4s Vorrat, wird pro Aufruf mit Zufalls-Offset geslict
+      // 16s Vorrat: bei langen Furzen (hoher Swell/Animal, bis ~2.8s) blieben bei
+      // nur 4s kaum mehr als ~1s moegliche Zufalls-Offsets uebrig, wodurch
+      // aufeinanderfolgende lange Auto-Furze hoerbar aehnliches Rauschmaterial
+      // wiederverwendet haetten.
+      const length = ctx.sampleRate * 16;
       sharedNoiseBuffer = ctx.createBuffer(1, length, ctx.sampleRate);
       const data = sharedNoiseBuffer.getChannelData(0);
       for(let i=0;i<length;i++) data[i] = Math.random()*2-1;
@@ -395,9 +399,9 @@
     const whistleAmt = params.whistle;
     const wobble = params.wobble;
 
-    const baseDur = 0.7 + swell*1.3 + Math.random()*0.5;
+    const baseDur = 0.6 + swell*1.1 + Math.random()*0.4;
     const duration = mode === "animal" ? baseDur*1.25 : baseDur;
-    const tailPad = 0.35;
+    const tailPad = 0.2;
 
     let fMin, fMax;
     if(mode === "male"){ fMin = 42; fMax = 95; }
@@ -418,7 +422,7 @@
     bodyGain.gain.value = 0.9;
 
     const shaper = ctx.createWaveShaper();
-    shaper.curve = makeDistortionCurve(18 + moisture*14);
+    shaper.curve = makeDistortionCurve(38 + moisture*22);
     shaper.oversample = "4x";
 
     const detunes = mode === "animal" ? [-11,-2,0,9,16] : [-8,0,7];
@@ -474,7 +478,69 @@
     tremoloGain.gain.value = 1 - tremDepth/2;
 
     shaper.connect(tremoloGain);
-    tremoloGain.connect(masterGain);
+
+    // -- Burst-Struktur: zerlegt den Koerper in einzelne, klar getrennte
+    // "Stoesse" statt eines glatten Dauertons (knackiger, wie echte Furze) --
+    const burstGain = ctx.createGain();
+    tremoloGain.connect(burstGain);
+    burstGain.connect(masterGain);
+
+    const burstCount = (mode === "animal" ? 3 : 2) + Math.floor(Math.random()*3);
+    const burstSpan = duration*0.94;
+    // Segmentlaengen werden aus zufaelligen, aber auf burstSpan NORMALISIERTEN
+    // Gewichten berechnet - sonst driftet die tatsaechliche Gesamtlaenge der
+    // Bursts zufaellig deutlich unter oder ueber die eigentliche duration
+    // (gemessen: bis zu -0.84s zu kurz -> Sound verstummt vorzeitig, oder
+    // +0.53s zu lang -> stumme Phantom-Bursts nach dem Quellen-Stopp).
+    const gapCount = burstCount - 1;
+    const totalGapTime = gapCount > 0 ? burstSpan*0.1 : 0;
+    const segSpan = burstSpan - totalGapTime;
+    const rawWeights = [];
+    for(let i=0;i<burstCount;i++) rawWeights.push(0.7 + Math.random()*0.6);
+    const weightSum = rawWeights.reduce((a,b)=>a+b, 0);
+
+    burstGain.gain.setValueAtTime(0.0001, now);
+    let bt = now;
+    for(let i=0;i<burstCount;i++){
+      const segLen = Math.max(0.05, segSpan*(rawWeights[i]/weightSum));
+      const riseLen = Math.min(segLen*0.3, 0.015 + swell*0.02);
+      const fallStart = bt + riseLen;
+      const fallLen = Math.max(segLen - riseLen, 0.02);
+      const isLast = i === burstCount-1;
+      const floor = isLast ? 0.0001 : 0.06 + Math.random()*0.05;
+      burstGain.gain.linearRampToValueAtTime(1, fallStart);
+      burstGain.gain.linearRampToValueAtTime(floor, fallStart + fallLen);
+      bt = fallStart + fallLen;
+      if(!isLast){
+        const gapLen = Math.max(0.015, (totalGapTime/gapCount)*(0.7 + Math.random()*0.6));
+        bt += gapLen;
+        burstGain.gain.setValueAtTime(floor, bt);
+      }
+    }
+    burstGain.gain.linearRampToValueAtTime(0.0001, Math.max(bt+0.02, now + duration + tailPad*0.4));
+
+    // -- Knall: kurzer perkussiver Attack-Klick fuer mehr Punch am Start --
+    const knallSrc = ctx.createBufferSource();
+    const knallBuffer = getNoiseBuffer(ctx);
+    knallSrc.buffer = knallBuffer;
+    const knallOffset = Math.random() * Math.max(0, knallBuffer.duration - 0.08);
+    const knallFilter = ctx.createBiquadFilter();
+    knallFilter.type = "bandpass";
+    knallFilter.frequency.value = baseFreq*2.5 + 300;
+    knallFilter.Q.value = 2.5;
+    // Etwas leiser bei hohem Swell, damit sanft/langsam gedachte Klaenge
+    // (z.B. "French Kiss") nicht denselben harten Peitschenknall bekommen
+    // wie ein Instant-Blast bei niedrigem Swell.
+    const knallPeak = 0.9 - swell*0.45;
+    const knallGain = ctx.createGain();
+    knallGain.gain.setValueAtTime(0.0001, now);
+    knallGain.gain.linearRampToValueAtTime(knallPeak, now + 0.006);
+    knallGain.gain.linearRampToValueAtTime(0.0001, now + 0.05 + swell*0.02);
+    knallSrc.connect(knallFilter);
+    knallFilter.connect(knallGain);
+    // Bypasst die (bei hohem Swell langsam einschwingende) Master-Huellkurve,
+    // damit der Attack-Knall immer sofort und unabhaengig vom Swell hoerbar ist.
+    knallGain.connect(ctx.destination);
 
     // -- Moisture: filtered noise layer for wet/squelchy texture --
     const noiseSrc = ctx.createBufferSource();
@@ -498,55 +564,87 @@
 
     noiseSrc.connect(noiseFilter);
     noiseFilter.connect(noiseGain);
-    noiseGain.connect(masterGain);
+    // Ueber burstGain statt direkt in masterGain, damit das Rauschen die
+    // Bursts mitmacht statt in den Stille-Luecken glatt durchzulaufen.
+    noiseGain.connect(burstGain);
 
     noiseGain.gain.linearRampToValueAtTime(moisture*0.62, now + 0.05 + swell*0.2);
     noiseGain.gain.linearRampToValueAtTime(moisture*0.2, now + duration*0.9);
     noiseGain.gain.linearRampToValueAtTime(0.0001, now + duration + tailPad*0.6);
 
-    // -- Whistle: high sine partial for the comedic squeak --
-    let whistleOsc, whistleGain;
+    // -- Whistle: gefiltertes Rauschen fuer ein Fauchen/Zischen statt eines
+    // reinen Pfeiftons; ein leiser Sinus-Anteil sorgt fuer einen Hauch Tonalitaet --
+    let whistleSrc, whistleFilter, whistleGain, whistleTone, whistleToneGain, whistleOffset;
     if(whistleAmt > 0.01){
-      whistleOsc = ctx.createOscillator();
-      whistleOsc.type = "sine";
-      const wBase = 850 + pitch*950;
-      whistleOsc.frequency.setValueAtTime(wBase, now);
-      whistleOsc.frequency.linearRampToValueAtTime(wBase*1.35, now + duration*0.7);
+      whistleSrc = ctx.createBufferSource();
+      const whistleBuffer = getNoiseBuffer(ctx);
+      whistleSrc.buffer = whistleBuffer;
+      whistleOffset = Math.random() * Math.max(0, whistleBuffer.duration - (duration + tailPad));
+      whistleFilter = ctx.createBiquadFilter();
+      whistleFilter.type = "bandpass";
+      const wBase = 1800 + pitch*2600;
+      whistleFilter.frequency.setValueAtTime(wBase, now);
+      whistleFilter.frequency.linearRampToValueAtTime(wBase*0.7, now + duration*0.75);
+      whistleFilter.Q.value = 2.2;
       whistleGain = ctx.createGain();
       whistleGain.gain.setValueAtTime(0.0001, now);
-      whistleGain.gain.linearRampToValueAtTime(whistleAmt*0.22, now + 0.12 + swell*0.25);
+      whistleGain.gain.linearRampToValueAtTime(whistleAmt*0.55, now + 0.1 + swell*0.2);
+      whistleGain.gain.linearRampToValueAtTime(whistleAmt*0.2, now + duration*0.8);
       whistleGain.gain.linearRampToValueAtTime(0.0001, now + duration);
-      whistleOsc.connect(whistleGain);
-      whistleGain.connect(masterGain);
+      whistleSrc.connect(whistleFilter);
+      whistleFilter.connect(whistleGain);
+      whistleGain.connect(burstGain);
+
+      whistleTone = ctx.createOscillator();
+      whistleTone.type = "sine";
+      whistleTone.frequency.setValueAtTime(wBase*0.5, now);
+      whistleTone.frequency.linearRampToValueAtTime(wBase*0.4, now + duration*0.7);
+      whistleToneGain = ctx.createGain();
+      whistleToneGain.gain.setValueAtTime(0.0001, now);
+      whistleToneGain.gain.linearRampToValueAtTime(whistleAmt*0.08, now + 0.1 + swell*0.2);
+      whistleToneGain.gain.linearRampToValueAtTime(0.0001, now + duration);
+      whistleTone.connect(whistleToneGain);
+      whistleToneGain.connect(burstGain);
     }
 
     // -- Master envelope (Swell = attack time / crescendo) --
-    const attack = 0.03 + swell*1.1;
-    const peak = 0.85;
+    const attack = 0.02 + swell*1.0;
+    const peak = 0.95;
     masterGain.gain.linearRampToValueAtTime(peak, now + attack);
-    masterGain.gain.linearRampToValueAtTime(peak*0.35, now + attack + duration*0.45);
+    masterGain.gain.linearRampToValueAtTime(peak*0.22, now + attack + duration*0.4);
     masterGain.gain.linearRampToValueAtTime(0.0001, now + duration + tailPad);
 
     masterGain.connect(ctx.destination);
 
-    const stopAt = now + duration + tailPad + 0.1;
+    // stopAt muss mindestens so lang sein wie die Burst-Huellkurve tatsaechlich
+    // braucht (bt) - sonst werden Quellen gestoppt, waehrend spaetere Bursts
+    // noch "aufgehen" sollen, was zu stummen Phantom-Bursts fuehrt.
+    const stopAt = Math.max(now + duration + tailPad + 0.1, bt + tailPad + 0.1);
     oscs.forEach(o=>{ o.start(now); o.stop(stopAt); });
     vibLfo.start(now); vibLfo.stop(stopAt);
     tremLfo.start(now); tremLfo.stop(stopAt);
     noiseLfo.start(now); noiseLfo.stop(stopAt);
     noiseSrc.start(now, noiseStartOffset); noiseSrc.stop(stopAt);
-    if(whistleOsc){ whistleOsc.start(now); whistleOsc.stop(stopAt); }
+    knallSrc.start(now, knallOffset); knallSrc.stop(now + 0.1);
+    if(whistleSrc){ whistleSrc.start(now, whistleOffset); whistleSrc.stop(stopAt); }
+    if(whistleTone){ whistleTone.start(now); whistleTone.stop(stopAt); }
 
     const cleanupNodes = [masterGain, lowpass, bodyGain, shaper, tremoloGain, vibGain,
-      tremDepthGain, noiseFilter, noiseGain, noiseLfoGain,
-      ...oscs, vibLfo, tremLfo, noiseLfo, noiseSrc];
-    if(whistleOsc) cleanupNodes.push(whistleOsc);
+      tremDepthGain, burstGain, knallFilter, knallGain,
+      noiseFilter, noiseGain, noiseLfoGain,
+      ...oscs, vibLfo, tremLfo, noiseLfo, noiseSrc, knallSrc];
+    if(whistleSrc) cleanupNodes.push(whistleSrc);
+    if(whistleFilter) cleanupNodes.push(whistleFilter);
     if(whistleGain) cleanupNodes.push(whistleGain);
+    if(whistleTone) cleanupNodes.push(whistleTone);
+    if(whistleToneGain) cleanupNodes.push(whistleToneGain);
     setTimeout(()=>{
       cleanupNodes.forEach(n=>{ try{ n.disconnect(); }catch(e){} });
     }, (stopAt - ctx.currentTime + 0.2) * 1000);
 
-    return duration + tailPad;
+    // Reflektiert die tatsaechliche Laufzeit (inkl. moeglicher Burst-Ueberlaenge),
+    // damit LED/LCD-Timing und die Auto-Modus-Pausenberechnung nicht zu kurz greifen.
+    return stopAt - now - 0.1;
   }
 
   // ---------- UI wiring ----------
@@ -660,29 +758,54 @@
     updateLcdIdle();
   });
 
+  let ledOffAt = 0;
+  let lcdRevertAt = 0;
   function flashTrigger(durationMs){
     triggerBtn.classList.add("firing");
-    setTimeout(()=> triggerBtn.classList.remove("firing"), Math.min(durationMs || 350, 2500));
+    const dur = Math.min(durationMs || 350, 3800);
+    // Bei ueberlappenden Furzen (schnelles Doppel-Klicken, Auto+manuell) darf die
+    // LED nicht erloeschen, solange ein SPAETERER, noch laufender Furz sie
+    // noch braucht - daher nur ausschalten, wenn kein neuerer Aufruf dazwischenkam.
+    ledOffAt = Math.max(ledOffAt, Date.now() + dur);
+    setTimeout(()=>{
+      if(Date.now() >= ledOffAt - 5) triggerBtn.classList.remove("firing");
+    }, dur);
   }
 
   function fireFart(paramsOverride){
     const params = paramsOverride || state;
     const dur = playFart(params);
+    audioSettledAt = Date.now() + dur*1000*0.75;
     flashTrigger(dur*1000);
     const phrases = ["PRRRT...", "BRRRAAAP!", "*PLOPP*", "FFFRRRT~", "TOOOT!", "SQUEEEEZE"];
     lcdLine1.textContent = phrases[Math.floor(Math.random()*phrases.length)];
-    setTimeout(()=> updateLcdIdle(), Math.min(dur*1000, 4000));
+    // Gleiches Prinzip wie bei der LED: bei ueberlappenden Furzen nicht
+    // vorzeitig auf "Bereit" zurückspringen, waehrend ein spaeterer Furz
+    // noch laeuft.
+    const lcdDur = Math.min(dur*1000, 4000);
+    lcdRevertAt = Math.max(lcdRevertAt, Date.now() + lcdDur);
+    setTimeout(()=>{
+      if(Date.now() >= lcdRevertAt - 5) updateLcdIdle();
+    }, lcdDur);
+    return dur;
   }
 
   triggerBtn.addEventListener("click", ()=> fireFart());
 
   // ---------- Auto mode ----------
   let autoTimer = null;
+  // Zeitstempel (Date.now()-Basis), ab dem der GERADE spielende Furz als
+  // abgeklungen gilt. Wird in fireFart() gesetzt und hier gelesen - so wartet
+  // scheduleNextAuto immer auf das tatsaechlich noch laufende Signal, auch wenn
+  // es (z.B. durch resyncAutoTimer bei einer Reglernaenderung mitten im
+  // Abspielen) neu angestossen wird, statt Ueberlappungen zu riskieren.
+  let audioSettledAt = 0;
   function scheduleNextAuto(){
     if(!state.auto) return;
-    const base = 8 - state.frequenz*7.4; // 8s (langsam) .. 0.6s (schnell)
+    const base = 8 - state.frequenz*7.4; // 8s (langsam) .. 0.6s (schnell) reine Pause
     const jitter = base * 0.35 * (Math.random()*2 - 1);
-    const wait = Math.max(0.3, base + jitter);
+    const gap = Math.max(0.25, base + jitter);
+    const settleRemaining = Math.max(0, (audioSettledAt - Date.now()) / 1000);
     autoTimer = setTimeout(()=>{
       const jittered = Object.assign({}, state, {
         tonhoehe: clamp(state.tonhoehe + (Math.random()-0.5)*0.12, 0, 1),
@@ -690,7 +813,7 @@
       });
       fireFart(jittered);
       scheduleNextAuto();
-    }, wait*1000);
+    }, (settleRemaining + gap)*1000);
   }
   function resyncAutoTimer(){
     if(autoTimer){ clearTimeout(autoTimer); autoTimer = null; }
